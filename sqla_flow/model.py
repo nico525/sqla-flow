@@ -1,8 +1,8 @@
 import sqlalchemy as sa
-from sqlalchemy.ext.declarative import declared_attr
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.ext.declarative import declared_attr, declarative_base
 from sqla_flow.utils import slugify
 from enum import Enum
+from sqlalchemy.ext.associationproxy import association_proxy
 
 _Base = declarative_base()
 _loaded_functions = {}
@@ -22,22 +22,20 @@ class _SlugMixin:
     description = sa.Column(sa.String)
 
 
-class Workflow(FlowBase, _SlugMixin):
-    id = sa.Column(sa.Integer, primary_key=True)
-    initial_state_id = sa.Column(sa.Integer, sa.ForeignKey("State.id"), nullable=False)
-
-    states = sa.orm.relationship("State", back_populates="workflow")
-    transitions = sa.orm.relationship("Transition", back_populates="workflow")
-    initial_state = sa.orm.relationship("State")
-    classes = sa.orm.relationship("WorkflowMeta", back_populates="workflow")
-
-
 class State(FlowBase, _SlugMixin):
     id = sa.Column(sa.Integer, primary_key=True)
-    workflow_id = sa.Column(sa.Integer, sa.ForeignKey(Workflow.id), nullable=False)
 
-    workflow = sa.orm.relationship("Workflow", back_populates="states")
     next_transitions = sa.orm.relationship("Transition", back_populates="source_state", foreign_keys="Transition.source_state_id")
+    workflow_initializations = sa.orm.relationship("Workflow", back_populates="initial_state")
+
+
+class Workflow(FlowBase, _SlugMixin):
+    id = sa.Column(sa.Integer, primary_key=True)
+    initial_state_id = sa.Column(sa.Integer, sa.ForeignKey(State.id))
+
+    transitions = sa.orm.relationship("Transition", back_populates="workflow")
+    classes = sa.orm.relationship("WorkflowMeta", back_populates="workflow")
+    initial_state = sa.orm.relationship("State", back_populates="workflow_initializations")
 
 
 class WorkflowMeta(FlowBase):
@@ -107,8 +105,8 @@ class Hook(FlowBase, _SlugMixin):
     function_id = sa.Column(sa.Integer, sa.ForeignKey(Function.id), nullable=False)
     transition_id = sa.Column(sa.Integer, sa.ForeignKey(Transition.id), nullable=False)
 
-    function = sa.orm.relationship("Function", back_populates="hooks")
-    transition = sa.orm.relationship("Transition", back_populates="hooks")
+    function = sa.orm.relationship("Function", lazy='joined', back_populates="hooks")
+    transition = sa.orm.relationship("Transition", lazy='joined', back_populates="hooks")
 
     __table_args__ = (
         sa.UniqueConstraint(transition_id, order_no, when, name='uq_transition_order'),
